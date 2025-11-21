@@ -7,115 +7,243 @@ import { agentOrchestrator } from '../agents/AgentOrchestrator';
 import { modelRouter } from '../ai/ModelRouter';
 import { projectBrain } from '../brain/ProjectBrain';
 import { memoryEngine } from '../memory/MemoryEngine';
+import { logger } from '../utils/logger';
 
 export class WebviewProvider implements vscode.WebviewViewProvider {
-    public static readonly viewType = 'codemind.panel';
-    private _view?: vscode.WebviewView;
+  public static readonly viewType = 'codemind.panel';
+  private _view?: vscode.WebviewView;
 
-    constructor(private readonly _extensionUri: vscode.Uri) { }
+  constructor(private readonly _extensionUri: vscode.Uri) { }
 
-    public resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        _context: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken
-    ) {
-        this._view = webviewView;
+  public resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    _context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken
+  ) {
+    this._view = webviewView;
 
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this._extensionUri]
-        };
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this._extensionUri]
+    };
 
-        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+    webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-        // Handle messages from the webview
-        webviewView.webview.onDidReceiveMessage(async (data) => {
-            switch (data.type) {
-                case 'getStatus':
-                    await this.sendStatus();
-                    break;
-                case 'getActiveTasks':
-                    await this.sendActiveTasks();
-                    break;
-                case 'getMemoryStats':
-                    await this.sendMemoryStats();
-                    break;
-                case 'selectModel':
-                    await this.handleModelSelection(data.model);
-                    break;
-            }
-        });
+    // Handle messages from the webview
+    webviewView.webview.onDidReceiveMessage(async (data) => {
+      switch (data.type) {
+        case 'getStatus':
+          await this.sendStatus();
+          break;
+        case 'getActiveTasks':
+          await this.sendActiveTasks();
+          break;
+        case 'getMemoryStats':
+          await this.sendMemoryStats();
+          break;
+        case 'selectModel':
+          await this.handleModelSelection(data.model);
+          break;
+        case 'executeQuery':
+          await this.handleQuery(data.query);
+          break;
+      }
+    });
 
-        // Send initial data
-        this.sendStatus();
+    // Send initial data
+    this.sendStatus();
+  }
+
+  private async sendStatus() {
+    if (!this._view) {
+      return;
     }
 
-    private async sendStatus() {
-        if (!this._view) {
-            return;
+    const providerStatus = await modelRouter.getProviderStatus();
+    const brainState = projectBrain.getState();
+    const memoryStats = memoryEngine.getStatistics();
+
+    this._view.webview.postMessage({
+      type: 'status',
+      data: {
+        providers: Array.from(providerStatus.entries()),
+        brainState: brainState ? {
+          fileCount: brainState.fileCount,
+          frameworks: brainState.frameworks.map(f => f.name),
+          lastAnalyzed: brainState.lastAnalyzed
+        } : null,
+        memory: memoryStats
+      }
+    });
+  }
+
+  private async sendActiveTasks() {
+    if (!this._view) {
+      return;
+    }
+
+    const tasks = agentOrchestrator.getActiveTasks();
+
+    this._view.webview.postMessage({
+      type: 'activeTasks',
+      data: tasks
+    });
+  }
+
+  private async sendMemoryStats() {
+    if (!this._view) {
+      return;
+    }
+
+    const stats = memoryEngine.getStatistics();
+    const recentMemories = await memoryEngine.getRecentMemories(10);
+
+    this._view.webview.postMessage({
+      type: 'memoryStats',
+      data: {
+        stats,
+        recent: recentMemories
+      }
+    });
+  }
+
+  private async handleModelSelection(model: string) {
+    // Update configuration
+    await vscode.workspace.getConfiguration('codemind').update(
+      'primaryModel',
+      model,
+      vscode.ConfigurationTarget.Global
+    );
+
+    vscode.window.showInformationMessage(`Primary model set to: ${model}`);
+  }
+
+  private async handleQuery(query: string) {
+    if (!this._view) {
+      return;
+    }
+
+    try {
+      // Send loading state
+      this._view.webview.postMessage({
+        type: 'queryResponse',
+        data: { loading: true }
+      });
+
+      // Parse query for @ file references and / commands
+      const { cleanQuery, files, command } = await this.parseQuery(query);
+
+      // Determine agent type based on command
+      let agentType: any = 'coder';
+      if (command) {
+        switch (command) {
+          case 'explain':
+            agentType = 'documenter';
+            break;
+          case 'refactor':
+            agentType = 'coder';
+            break;
+          case 'test':
+            agentType = 'tester';
+            break;
+          case 'doc':
+          case 'document':
+            agentType = 'documenter';
+            break;
+          case 'review':
+            agentType = 'reviewer';
+            break;
+          default:
+            agentType = 'coder';
         }
+      }
 
-        const providerStatus = await modelRouter.getProviderStatus();
-        const brainState = projectBrain.getState();
-        const memoryStats = memoryEngine.getStatistics();
+      // Create proper agent task
+      const task: any = {
+        id: `query-${Date.now()}`,
+        type: agentType,
+        description: cleanQuery,
+        context: {
+          files: files,
+          userPrompt: cleanQuery
+        },
+        priority: 1,
+        status: 'pending',
+        createdAt: Date.now()
+      };
 
-        this._view.webview.postMessage({
-            type: 'status',
-            data: {
-                providers: Array.from(providerStatus.entries()),
-                brainState: brainState ? {
-                    fileCount: brainState.fileCount,
-                    frameworks: brainState.frameworks.map(f => f.name),
-                    lastAnalyzed: brainState.lastAnalyzed
-                } : null,
-                memory: memoryStats
-            }
-        });
-    }
+      // Execute query through agent orchestrator
+      const result = await agentOrchestrator.executeTask(task);
 
-    private async sendActiveTasks() {
-        if (!this._view) {
-            return;
+      // Send response
+      this._view.webview.postMessage({
+        type: 'queryResponse',
+        data: {
+          loading: false,
+          response: result.output || 'Query completed successfully',
+          success: true,
+          referencedFiles: files
         }
-
-        const tasks = agentOrchestrator.getActiveTasks();
-
-        this._view.webview.postMessage({
-            type: 'activeTasks',
-            data: tasks
-        });
-    }
-
-    private async sendMemoryStats() {
-        if (!this._view) {
-            return;
+      });
+    } catch (error: any) {
+      // Send error
+      this._view.webview.postMessage({
+        type: 'queryResponse',
+        data: {
+          loading: false,
+          response: `Error: ${error.message}`,
+          success: false
         }
+      });
+    }
+  }
 
-        const stats = memoryEngine.getStatistics();
-        const recentMemories = await memoryEngine.getRecentMemories(10);
+  private async parseQuery(query: string): Promise<{ cleanQuery: string; files: string[]; command?: string }> {
+    const files: string[] = [];
+    let command: string | undefined;
+    let cleanQuery = query;
 
-        this._view.webview.postMessage({
-            type: 'memoryStats',
-            data: {
-                stats,
-                recent: recentMemories
-            }
-        });
+    // Parse @ file references
+    const fileMatches = query.matchAll(/@([\w\-\.\/]+)/g);
+    for (const match of fileMatches) {
+      const fileRef = match[1];
+
+      // Try to resolve file path
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (workspaceRoot) {
+        const filePath = `${workspaceRoot}/${fileRef}`;
+
+        // Check if file exists
+        try {
+          await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+          files.push(filePath);
+        } catch {
+          // File doesn't exist, try without workspace root
+          try {
+            await vscode.workspace.fs.stat(vscode.Uri.file(fileRef));
+            files.push(fileRef);
+          } catch {
+            logger.info(`File not found: ${fileRef}`);
+          }
+        }
+      }
+
+      // Remove @ reference from query
+      cleanQuery = cleanQuery.replace(match[0], '').trim();
     }
 
-    private async handleModelSelection(model: string) {
-        // Update configuration
-        await vscode.workspace.getConfiguration('codemind').update(
-            'primaryModel',
-            model,
-            vscode.ConfigurationTarget.Global
-        );
-
-        vscode.window.showInformationMessage(`Primary model set to: ${model}`);
+    // Parse / command
+    const commandMatch = query.match(/^\/(\w+)\s*/);
+    if (commandMatch) {
+      command = commandMatch[1];
+      cleanQuery = cleanQuery.replace(commandMatch[0], '').trim();
     }
 
-    private _getHtmlForWebview(_webview: vscode.Webview) {
-        return `<!DOCTYPE html>
+    return { cleanQuery, files, command };
+  }
+
+  private _getHtmlForWebview(_webview: vscode.Webview) {
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -223,6 +351,62 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
       margin-top: 8px;
     }
 
+    textarea, input[type="text"] {
+      background-color: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      padding: 8px 12px;
+      border-radius: 4px;
+      width: 100%;
+      margin-top: 8px;
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+      resize: vertical;
+    }
+
+    textarea {
+      min-height: 80px;
+    }
+
+    .query-response {
+      margin-top: 12px;
+      padding: 12px;
+      background-color: var(--vscode-editor-background);
+      border-radius: 4px;
+      border-left: 3px solid var(--vscode-textLink-foreground);
+      white-space: pre-wrap;
+      font-family: var(--vscode-editor-font-family);
+      font-size: 13px;
+    }
+
+    .query-response.error {
+      border-left-color: var(--vscode-testing-iconFailed);
+      color: var(--vscode-errorForeground);
+    }
+
+    .loading {
+      opacity: 0.6;
+      font-style: italic;
+    }
+
+    .file-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      background-color: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      border-radius: 12px;
+      font-size: 11px;
+      font-family: var(--vscode-editor-font-family);
+    }
+
     .task-item {
       padding: 12px;
       margin-bottom: 8px;
@@ -269,12 +453,31 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
     <h3>Model Selection</h3>
     <select id="modelSelect">
       <option value="groq-llama-3.1-70b">Groq LLaMA 3.1 70B (Fast)</option>
-      <option value="deepseek-coder">DeepSeek Coder (Code)</option>
-      <option value="gemini-flash-2.0">Gemini Flash 2.0 (Large Context)</option>
+      <option value="groq-mixtral-8x7b">Groq Mixtral 8x7B</option>
+      <option value="groq-llama-3.1-8b">Groq LLaMA 3.1 8B (Fastest)</option>
+      <option value="deepseek-coder">DeepSeek Coder (Code Specialist)</option>
+      <option value="deepseek-chat">DeepSeek Chat</option>
+      <option value="gemini-pro">Gemini Pro (32K context)</option>
+      <option value="gemini-pro-vision">Gemini Pro Vision (Images)</option>
+      <option value="openai-gpt-4o-mini">OpenAI GPT-4o Mini</option>
+      <option value="claude-haiku">Claude Haiku</option>
       <option value="ollama-local">Ollama (Local)</option>
       <option value="lmstudio-local">LM Studio (Local)</option>
     </select>
     <button onclick="selectModel()">Set Primary Model</button>
+  </div>
+
+  <div class="section">
+    <h3>Ask AI Agent</h3>
+    <textarea id="queryInput" placeholder="Ask me anything...
+
+Examples:
+• @WebviewProvider.ts explain this file
+• /refactor make this code cleaner
+• @models.ts /review check for issues
+• Create a React component for user login"></textarea>
+    <button onclick="executeQuery()">Ask AI</button>
+    <div id="queryResponse" style="display: none;"></div>
   </div>
 
   <div class="section">
@@ -320,6 +523,9 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
           break;
         case 'memoryStats':
           updateMemoryStats(message.data);
+          break;
+        case 'queryResponse':
+          updateQueryResponse(message.data);
           break;
       }
     });
@@ -411,13 +617,62 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
       vscode.postMessage({ type: 'getActiveTasks' });
     }
 
-    // Auto-refresh every 5 seconds
-    setInterval(() => {
-      vscode.postMessage({ type: 'getStatus' });
-      vscode.postMessage({ type: 'getActiveTasks' });
-    }, 5000);
-  </script>
-</body>
-</html>`;
+    function executeQuery() {
+      const input = document.getElementById('queryInput');
+      const responseDiv = document.getElementById('queryResponse');
+      const query = input.value.trim();
+
+      if (!query) {
+        return;
+      }
+
+      // Show loading state
+      responseDiv.style.display = 'block';
+      responseDiv.className = 'query-response loading';
+      responseDiv.textContent = 'Processing your query...';
+
+      // Send query to extension
+      vscode.postMessage({
+        type: 'executeQuery',
+        query: query
+      });
     }
+
+    function updateQueryResponse(data) {
+      const responseDiv = document.getElementById('queryResponse');
+      
+      if (data.loading) {
+        responseDiv.style.display = 'block';
+        responseDiv.className = 'query-response loading';
+        responseDiv.textContent = 'Processing your query...';
+      } else {
+        responseDiv.style.display = 'block';
+        responseDiv.className = data.success ? 'query-response' : 'query-response error';
+        
+        // Build response HTML
+        let html = '<div>' + data.response + '</div>';
+        
+        // Add referenced files if any
+        if (data.referencedFiles && data.referencedFiles.length > 0) {
+          html += '<div class="file-chips">';
+          data.referencedFiles.forEach(file => {
+            const fileName = file.split('/').pop();
+            html += '<span class="file-chip">📄 ' + fileName + '</span>';
+          });
+          html += '</div>';
+        }
+        
+        responseDiv.innerHTML = html;
+      }
+    }
+
+// Auto-refresh every 5 seconds
+setInterval(() => {
+  vscode.postMessage({ type: 'getStatus' });
+  vscode.postMessage({ type: 'getActiveTasks' });
+}, 5000);
+</script>
+  </body>
+  </html>`;
+  }
 }

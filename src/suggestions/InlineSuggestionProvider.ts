@@ -63,7 +63,7 @@ export class InlineSuggestionProvider implements vscode.InlineCompletionItemProv
                 systemPrompt: 'You are a code completion assistant. Provide only the completion, no explanations.',
                 maxTokens: 100,
                 temperature: 0.3 // Lower temperature for more deterministic completions
-            }, 'code-generation');
+            }, 'code-completion');
 
             return this.extractCompletion(response.content, textBeforeCursor);
         } catch (error) {

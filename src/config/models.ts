@@ -65,25 +65,25 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     },
 
     // Google Gemini Models (Free Tier)
-    'gemini-flash-2.0': {
-        id: 'gemini-flash-2.0',
+    'gemini-pro': {
+        id: 'gemini-pro',
         provider: 'gemini',
-        name: 'Gemini 2.0 Flash',
-        contextWindow: 1000000,
-        capabilities: ['code-generation', 'code-review', 'explanation', 'refactoring', 'documentation', 'image-to-code'],
+        name: 'Gemini Pro',
+        contextWindow: 32768,
+        capabilities: ['code-generation', 'code-review', 'explanation', 'refactoring', 'documentation'],
         costPerToken: 0,
         averageLatency: 250,
         isLocal: false,
         requiresApiKey: true
     },
-    'gemini-flash-lite': {
-        id: 'gemini-flash-lite',
+    'gemini-pro-vision': {
+        id: 'gemini-pro-vision',
         provider: 'gemini',
-        name: 'Gemini Flash Lite',
-        contextWindow: 32768,
-        capabilities: ['code-completion', 'explanation'],
+        name: 'Gemini Pro Vision',
+        contextWindow: 16384,
+        capabilities: ['code-generation', 'explanation', 'image-to-code'],
         costPerToken: 0,
-        averageLatency: 150,
+        averageLatency: 300,
         isLocal: false,
         requiresApiKey: true
     },

@@ -11,21 +11,45 @@ export class GeminiProvider extends BaseProvider {
     private client?: GoogleGenerativeAI;
 
     constructor(apiKey?: string) {
-        super('gemini', apiKey);
-        if (apiKey) {
-            this.client = new GoogleGenerativeAI(apiKey);
+        // Trim whitespace from API key (common copy-paste issue)
+        const trimmedKey = apiKey?.trim();
+
+        super('gemini', trimmedKey);
+
+        if (trimmedKey) {
+            logger.info(`Gemini provider initializing with API key: ${trimmedKey.substring(0, 10)}...`);
+            this.client = new GoogleGenerativeAI(trimmedKey);
+        } else {
+            logger.warn('Gemini provider initialized without API key');
         }
     }
 
     async isAvailable(): Promise<boolean> {
-        if (!this.apiKey || !this.client) {
-            logger.warn('Gemini API key not configured');
+        logger.info('Checking Gemini provider availability...');
+
+        if (!this.apiKey) {
+            logger.warn('Gemini API key not configured (apiKey is undefined or empty)');
             return false;
         }
 
+        if (!this.client) {
+            logger.warn('Gemini client not initialized');
+            return false;
+        }
+
+        // Simple check - just verify client is initialized
+        // Don't make actual API calls in availability check as it's too aggressive
         try {
-            const model = this.client.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-            await model.generateContent('test');
+            logger.info(`Gemini API key length: ${this.apiKey.length}`);
+            logger.info(`Gemini API key starts with: ${this.apiKey.substring(0, 4)}`);
+
+            // Verify API key format (should start with 'AIza')
+            if (!this.apiKey.startsWith('AIza')) {
+                logger.error(`Gemini API key format invalid - starts with "${this.apiKey.substring(0, 4)}" but should start with "AIza"`);
+                return false;
+            }
+
+            logger.info('✓ Gemini provider is available');
             return true;
         } catch (error) {
             logger.error('Gemini availability check failed', error as Error);
@@ -42,7 +66,7 @@ export class GeminiProvider extends BaseProvider {
 
         try {
             const model = this.client.getGenerativeModel({
-                model: request.model || 'gemini-2.0-flash-exp'
+                model: request.model || 'gemini-pro'
             });
 
             const prompt = this.buildPrompt(request);
@@ -57,7 +81,7 @@ export class GeminiProvider extends BaseProvider {
 
             return this.createResponse(
                 content,
-                request.model || 'gemini-2.0-flash-exp',
+                request.model || 'gemini-pro',
                 tokensUsed,
                 latency
             );
@@ -79,7 +103,7 @@ export class GeminiProvider extends BaseProvider {
 
         try {
             const model = this.client.getGenerativeModel({
-                model: request.model || 'gemini-2.0-flash-exp'
+                model: request.model || 'gemini-pro'
             });
 
             const prompt = this.buildPrompt(request);
@@ -98,7 +122,7 @@ export class GeminiProvider extends BaseProvider {
 
             return this.createResponse(
                 fullContent,
-                request.model || 'gemini-2.0-flash-exp',
+                request.model || 'gemini-pro',
                 tokensUsed,
                 latency
             );

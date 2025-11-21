@@ -3,61 +3,81 @@
  */
 
 import Parser from 'tree-sitter';
-import TypeScript from 'tree-sitter-typescript';
-import JavaScript from 'tree-sitter-javascript';
-import Python from 'tree-sitter-python';
-import Go from 'tree-sitter-go';
-import Rust from 'tree-sitter-rust';
-import Java from 'tree-sitter-java';
 import { FunctionNode, ClassNode, ParameterNode, PropertyNode } from '../types';
 import { logger } from '../utils/logger';
 import * as vscode from 'vscode';
 
 export class ASTParser {
     private parsers: Map<string, Parser> = new Map();
+    private initialized = false;
 
     constructor() {
-        this.initializeParsers();
+        // Lazy initialization
     }
 
-    private initializeParsers(): void {
-        // TypeScript
-        const tsParser = new Parser();
-        tsParser.setLanguage(TypeScript.typescript);
-        this.parsers.set('typescript', tsParser);
-        this.parsers.set('ts', tsParser);
-        this.parsers.set('tsx', tsParser);
+    private async initializeParsers(): Promise<void> {
+        if (this.initialized) return;
 
-        // JavaScript
-        const jsParser = new Parser();
-        jsParser.setLanguage(JavaScript);
-        this.parsers.set('javascript', jsParser);
-        this.parsers.set('js', jsParser);
-        this.parsers.set('jsx', jsParser);
+        try {
+            // TypeScript
+            try {
+                const TypeScript = require('tree-sitter-typescript');
+                const tsParser = new Parser();
+                tsParser.setLanguage(TypeScript.typescript);
+                this.parsers.set('typescript', tsParser);
+                this.parsers.set('ts', tsParser);
+                this.parsers.set('tsx', tsParser);
+            } catch (e) { logger.warn('Failed to load TypeScript parser', e as Error); }
 
-        // Python
-        const pyParser = new Parser();
-        pyParser.setLanguage(Python);
-        this.parsers.set('python', pyParser);
-        this.parsers.set('py', pyParser);
+            // JavaScript
+            try {
+                const JavaScript = require('tree-sitter-javascript');
+                const jsParser = new Parser();
+                jsParser.setLanguage(JavaScript);
+                this.parsers.set('javascript', jsParser);
+                this.parsers.set('js', jsParser);
+                this.parsers.set('jsx', jsParser);
+            } catch (e) { logger.warn('Failed to load JavaScript parser', e as Error); }
 
-        // Go
-        const goParser = new Parser();
-        goParser.setLanguage(Go);
-        this.parsers.set('go', goParser);
+            // Python
+            try {
+                const Python = require('tree-sitter-python');
+                const pyParser = new Parser();
+                pyParser.setLanguage(Python);
+                this.parsers.set('python', pyParser);
+                this.parsers.set('py', pyParser);
+            } catch (e) { logger.warn('Failed to load Python parser', e as Error); }
 
-        // Rust
-        const rustParser = new Parser();
-        rustParser.setLanguage(Rust);
-        this.parsers.set('rust', rustParser);
-        this.parsers.set('rs', rustParser);
+            // Go
+            try {
+                const Go = require('tree-sitter-go');
+                const goParser = new Parser();
+                goParser.setLanguage(Go);
+                this.parsers.set('go', goParser);
+            } catch (e) { logger.warn('Failed to load Go parser', e as Error); }
 
-        // Java
-        const javaParser = new Parser();
-        javaParser.setLanguage(Java);
-        this.parsers.set('java', javaParser);
+            // Rust
+            try {
+                const Rust = require('tree-sitter-rust');
+                const rustParser = new Parser();
+                rustParser.setLanguage(Rust);
+                this.parsers.set('rust', rustParser);
+                this.parsers.set('rs', rustParser);
+            } catch (e) { logger.warn('Failed to load Rust parser', e as Error); }
 
-        logger.info(`Initialized ${this.parsers.size} language parsers`);
+            // Java
+            try {
+                const Java = require('tree-sitter-java');
+                const javaParser = new Parser();
+                javaParser.setLanguage(Java);
+                this.parsers.set('java', javaParser);
+            } catch (e) { logger.warn('Failed to load Java parser', e as Error); }
+
+            this.initialized = true;
+            logger.info(`Initialized ${this.parsers.size} language parsers`);
+        } catch (error) {
+            logger.error('Failed to initialize parsers', error as Error);
+        }
     }
 
     async parseFile(filePath: string): Promise<{
@@ -66,6 +86,7 @@ export class ASTParser {
         imports: string[];
         exports: string[];
     }> {
+        await this.initializeParsers();
         try {
             const document = await vscode.workspace.openTextDocument(filePath);
             const language = document.languageId;
@@ -78,12 +99,13 @@ export class ASTParser {
         }
     }
 
-    parseContent(content: string, language: string): {
+    async parseContent(content: string, language: string): Promise<{
         functions: FunctionNode[];
         classes: ClassNode[];
         imports: string[];
         exports: string[];
-    } {
+    }> {
+        await this.initializeParsers();
         const parser = this.parsers.get(language);
 
         if (!parser) {
