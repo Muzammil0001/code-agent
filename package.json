@@ -1,10 +1,27 @@
 {
     "name": "codemind-ai",
-    "displayName": "CodeMind AI",
-    "description": "Next-generation AI coding agent with deep codebase intelligence, multi-agent architecture, and advanced safety controls",
-    "version": "0.1.0",
+    "displayName": "CodeMind AI - Next-Gen Coding Agent",
+    "description": "🤖 AI coding agent with 6 specialized agents, 10+ models (Groq, DeepSeek, Gemini), deep codebase intelligence, and complete safety system. Free tier focused!",
+    "version": "1.0.0",
     "publisher": "codemind",
+    "author": {
+        "name": "CodeMind Team",
+        "email": "support@codemind.dev"
+    },
+    "license": "MIT",
     "icon": "resources/icon.png",
+    "galleryBanner": {
+        "color": "#1e1e1e",
+        "theme": "dark"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Muzammil0001/code-agent.git"
+    },
+    "bugs": {
+        "url": "https://github.com/Muzammil0001/code-agent/issues"
+    },
+    "homepage": "https://github.com/Muzammil0001/code-agent#readme",
     "engines": {
         "vscode": "^1.85.0"
     },
@@ -114,9 +131,11 @@
                     "enum": [
                         "groq-llama-3.1-70b",
                         "groq-mixtral-8x7b",
+                        "groq-llama-3.1-8b",
                         "deepseek-coder",
-                        "gemini-flash-2.0",
-                        "gemini-flash-lite",
+                        "deepseek-chat",
+                        "gemini-pro",
+                        "gemini-pro-vision",
                         "openai-gpt-4o-mini",
                         "claude-haiku",
                         "ollama-local",
@@ -242,7 +261,7 @@
         ]
     },
     "scripts": {
-        "vscode:prepublish": "npm run build",
+        "vscode:prepublish": "npm run build:extension",
         "build": "npm run build:extension && npm run build:webview",
         "build:extension": "webpack --mode production --config webpack.extension.config.js",
         "build:webview": "cd webview && npm run build",
