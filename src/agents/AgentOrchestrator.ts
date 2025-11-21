@@ -6,6 +6,9 @@ import { AgentTask, AgentResult, AgentType, ExecutionPlan } from '../types';
 import { BaseAgent } from './BaseAgent';
 import { plannerAgent } from './PlannerAgent';
 import { coderAgent } from './CoderAgent';
+import { reviewerAgent } from './ReviewerAgent';
+import { testAgent } from './TestAgent';
+import { documentationAgent } from './DocumentationAgent';
 import { logger } from '../utils/logger';
 import PQueue from 'p-queue';
 import { configManager } from '../config/settings';
@@ -28,6 +31,9 @@ export class AgentOrchestrator {
     private registerAgents(): void {
         this.agents.set('planner', plannerAgent);
         this.agents.set('coder', coderAgent);
+        this.agents.set('reviewer', reviewerAgent);
+        this.agents.set('tester', testAgent);
+        this.agents.set('documenter', documentationAgent);
         // More agents will be registered here as they're created
 
         logger.info(`Registered ${this.agents.size} agents`);
