@@ -1,0 +1,73 @@
+@import "tailwindcss";
+@import "highlight.js/styles/github-dark.css";
+
+@theme {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+@layer base {
+  :root {
+    --vscode-editor-background: #0a0a0f;
+    --vscode-editor-foreground: #e4e4e7;
+    --vscode-input-background: #18181b;
+    --vscode-input-border: #27272a;
+    --vscode-input-foreground: #fafafa;
+    --vscode-input-placeholderForeground: #71717a;
+    --vscode-widget-border: #27272a;
+    --vscode-list-hoverBackground: #27272a;
+    --vscode-dropdown-background: #18181b;
+    --vscode-dropdown-foreground: #e4e4e7;
+    --vscode-dropdown-border: #27272a;
+    --vscode-button-background: #3b82f6;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #2563eb;
+    --vscode-focusBorder: #3b82f6;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #27272a #0a0a0f;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #0a0a0f;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: #27272a;
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+  }
+
+  body {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+}
