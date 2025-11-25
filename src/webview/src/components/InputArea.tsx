@@ -249,7 +249,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
                     />
 
                     {/* Main Input Container */}
-                    <div className="relative bg-zinc-900/80 border border-zinc-800 rounded-2xl shadow-2xl focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all duration-200 backdrop-blur-sm">
+                    <div className="relative bg-zinc-900/80 border border-zinc-800 rounded-2xl shadow-2xl transition-all duration-200 backdrop-blur-sm">
                         {/* Attached Files */}
                         {attachedFiles.length > 0 && (
                             <AttachedFiles files={attachedFiles} onRemove={removeFile} />

@@ -3,12 +3,17 @@ import { useVSCode } from '../hooks/useVSCode';
 import { useChat } from '../hooks/useChat';
 import { useModel } from '../hooks/useModel';
 import { useNotification } from '../hooks/useNotification';
+import { useTerminal } from '../hooks/useTerminal';
 import { ChatHistory } from './ChatHistory';
 import { InputArea, type AttachedItem } from './InputArea';
 import { HistoryView } from './HistoryView';
 import { Notification } from './Notification';
+import { CommandConfirmDialog } from './CommandConfirmDialog';
+import { TerminalOutput } from './TerminalOutput';
 import { Loader2 } from 'lucide-react';
 import { formatLLMMessage } from '../utils/formatLLMMessage';
+import { detectCommandIntent, parsePackageJson, detectProjectContext, type CommandIntent, type ProjectScripts } from '../utils/commandDetection';
+import { buildContextualPrompt } from '../utils/contextBuilder';
 import {
     GENERATE_SESSION_ID,
     CHAT_SAVE_DEBOUNCE,
@@ -43,6 +48,7 @@ export const MainApp = () => {
     } = useModel();
 
     const { showNotification } = useNotification();
+    const { commands, executeCommand, stopCommand } = useTerminal();
 
     // Local UI state that doesn't need to be global
     const [availableFiles, setAvailableFiles] = useState<Array<{ path: string; type: 'file' | 'directory' }>>([]);
@@ -50,6 +56,8 @@ export const MainApp = () => {
     const [editingMessage, setEditingMessage] = useState<string>('');
     const [showHistory, setShowHistory] = useState(false);
     const [sessionId, setSessionId] = useState<string>(currentSessionId || GENERATE_SESSION_ID());
+    const [projectScripts, setProjectScripts] = useState<ProjectScripts>({});
+    const [pendingCommand, setPendingCommand] = useState<CommandIntent | null>(null);
 
 
     useEffect(() => {
@@ -110,6 +118,13 @@ export const MainApp = () => {
                         setShowHistory(false);
                     }
                     break;
+
+                case 'fileContent':
+                    if (message.path === 'package.json' && message.content) {
+                        const scripts = parsePackageJson(message.content);
+                        setProjectScripts(scripts);
+                    }
+                    break;
             }
         };
 
@@ -119,6 +134,15 @@ export const MainApp = () => {
 
         return () => window.removeEventListener('message', handleMessage);
     }, [postMessage]);
+
+    // Load package.json for script detection
+    useEffect(() => {
+        const packageJsonFile = availableFiles.find(f => f.path === 'package.json');
+        if (packageJsonFile) {
+            // Request package.json content
+            postMessage({ type: 'readFile', path: 'package.json' });
+        }
+    }, [availableFiles, postMessage]);
 
     useEffect(() => {
         if (messages.length > 0) {
@@ -141,15 +165,44 @@ export const MainApp = () => {
     }, [messages, sessionId, postMessage]);
 
     const handleSend = (text: string, files: AttachedItem[]) => {
+        const projectContext = detectProjectContext(availableFiles, projectScripts);
+        const commandIntent = detectCommandIntent(text, projectContext);
+
+        if (commandIntent) {
+            if (commandIntent.requiresConfirmation) {
+                setPendingCommand(commandIntent);
+            } else {
+                executeCommand(commandIntent.command, 'chat');
+
+                // Add command message to chat
+                setMessages(prev => [
+                    ...prev,
+                    { role: 'user', content: text, id: Date.now().toString() },
+                    { role: 'ai', content: `Executing command: \`${commandIntent.command}\``, id: (Date.now() + 1).toString() }
+                ]);
+            }
+            return;
+        }
+
+        // Build contextual prompt
+        const contextualPrompt = buildContextualPrompt(text, messages, projectScripts);
+
+        // Add user message
         setMessages(prev => [...prev, { role: 'user', content: text, id: Date.now().toString() }]);
         setLoading(true);
         setAgentStatus('thinking');
 
+        // Send with context
         postMessage({
             type: 'executeQuery',
-            query: text,
+            query: contextualPrompt.prompt,
             files,
-            model: selectedModel
+            model: selectedModel,
+            context: {
+                originalQuery: text,
+                references: contextualPrompt.references,
+                summary: contextualPrompt.contextSummary
+            }
         });
     };
 
@@ -202,6 +255,25 @@ export const MainApp = () => {
         setEditingMessage('');
     };
 
+    const handleConfirmCommand = () => {
+        if (pendingCommand) {
+            executeCommand(pendingCommand.command, 'chat');
+
+            // Add command message to chat
+            setMessages(prev => [
+                ...prev,
+                { role: 'user', content: pendingCommand.originalMessage, id: Date.now().toString() },
+                { role: 'ai', content: `Executing command: \`${pendingCommand.command}\``, id: (Date.now() + 1).toString() }
+            ]);
+
+            setPendingCommand(null);
+        }
+    };
+
+    const handleCancelCommand = () => {
+        setPendingCommand(null);
+    };
+
     if (!isReady) {
         return (
             <div className="flex items-center justify-center h-screen bg-zinc-950">
@@ -236,7 +308,17 @@ export const MainApp = () => {
                         onEdit={handleEdit}
                         onHistoryClick={handleHistoryClick}
                         onNewChat={handleNewChat}
-                    />
+                    >
+                        {/* Render terminal outputs inside chat history */}
+                        {Array.from(commands.values()).map(cmd => (
+                            <div key={cmd.id} className="mb-4">
+                                <TerminalOutput
+                                    command={cmd}
+                                    onStop={stopCommand}
+                                />
+                            </div>
+                        ))}
+                    </ChatHistory>
                     <InputArea
                         onSend={handleSend}
                         onStop={handleStop}
@@ -247,6 +329,16 @@ export const MainApp = () => {
                         onEditComplete={() => setEditingMessage('')}
                     />
                 </>
+            )}
+
+            {/* Command confirmation dialog */}
+            {pendingCommand && (
+                <CommandConfirmDialog
+                    command={pendingCommand.command}
+                    riskLevel={pendingCommand.riskLevel}
+                    onConfirm={handleConfirmCommand}
+                    onCancel={handleCancelCommand}
+                />
             )}
         </div>
     );

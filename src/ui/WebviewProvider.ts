@@ -11,13 +11,18 @@ import { projectBrain } from '../brain/ProjectBrain';
 import { memoryEngine } from '../memory/MemoryEngine';
 import { logger } from '../utils/logger';
 import { SYSTEM_INSTRUCTION } from '../webview/src/constants/query-default-instructions';
+import { terminalManager } from '../terminal/TerminalManager';
+import { TerminalLocation } from '../types/terminalTypes';
 
 export class WebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'codemind.panel';
   private _view?: vscode.WebviewView;
   private _activeQueryController?: AbortController;
 
-  constructor(private readonly _extensionUri: vscode.Uri) { }
+  constructor(private readonly _extensionUri: vscode.Uri) {
+    // Set up terminal manager callbacks
+    this.initializeTerminalCallbacks();
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -97,6 +102,18 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
           break;
         case 'stopQuery':
           await this.handleStopQuery();
+          break;
+        case 'executeTerminalCommand':
+          await this.handleExecuteTerminalCommand(message.command, message.cwd, message.location);
+          break;
+        case 'stopTerminalCommand':
+          await this.handleStopTerminalCommand(message.commandId);
+          break;
+        case 'getRunningCommands':
+          await this.handleGetRunningCommands();
+          break;
+        case 'readFile':
+          await this.handleReadFile(message.path);
           break;
       }
     });
@@ -594,6 +611,158 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
         <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
       </body>
       </html>`;
+  }
+
+  /**
+   * Initialize terminal manager callbacks
+   */
+  private initializeTerminalCallbacks(): void {
+    terminalManager.setOnOutput((commandId, line) => {
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: 'terminalOutput',
+          commandId,
+          output: line
+        });
+      }
+    });
+
+    terminalManager.setOnStatus((commandId, status, pid) => {
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: 'terminalStatus',
+          commandId,
+          status,
+          pid
+        });
+      }
+    });
+
+    terminalManager.setOnComplete((commandId, exitCode, duration, status) => {
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: 'terminalComplete',
+          commandId,
+          exitCode,
+          duration,
+          status
+        });
+      }
+    });
+  }
+
+  /**
+   * Handle execute terminal command
+   */
+  private async handleExecuteTerminalCommand(
+    command: string,
+    cwd?: string,
+    location?: string
+  ): Promise<void> {
+    logger.info(`Executing terminal command: ${command}`);
+
+    try {
+      const termLocation = location === 'main' ? TerminalLocation.MAIN : TerminalLocation.CHAT;
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+      const result = await terminalManager.executeCommand(command, {
+        cwd: cwd || workspaceRoot,
+        location: termLocation
+      });
+
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: 'terminalCommandStarted',
+          commandId: result.commandId,
+          success: result.success,
+          error: result.error
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to execute terminal command', error as Error);
+
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: 'terminalCommandStarted',
+          success: false,
+          error: (error as Error).message
+        });
+      }
+    }
+  }
+
+  /**
+   * Handle stop terminal command
+   */
+  private async handleStopTerminalCommand(commandId: string): Promise<void> {
+    logger.info(`Stopping terminal command: ${commandId}`);
+
+    const stopped = terminalManager.stopCommand(commandId);
+
+    if (this._view) {
+      this._view.webview.postMessage({
+        type: 'terminalCommandStopped',
+        commandId,
+        stopped
+      });
+    }
+  }
+
+  /**
+   * Handle get running commands
+   */
+  private async handleGetRunningCommands(): Promise<void> {
+    const commands = terminalManager.getRunningCommands();
+
+    if (this._view) {
+      this._view.webview.postMessage({
+        type: 'runningCommands',
+        commands
+      });
+    }
+  }
+
+  /**
+   * Handle read file request
+   */
+  private async handleReadFile(filePath: string): Promise<void> {
+    if (!this._view) return;
+
+    try {
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspaceRoot) {
+        throw new Error('No workspace open');
+      }
+
+      const fullPath = path.join(workspaceRoot, filePath);
+
+      // Security check: ensure path is within workspace
+      if (!fullPath.startsWith(workspaceRoot)) {
+        throw new Error('Access denied: Path outside workspace');
+      }
+
+      if (fs.existsSync(fullPath)) {
+        const content = fs.readFileSync(fullPath, 'utf8');
+        this._view.webview.postMessage({
+          type: 'fileContent',
+          path: filePath,
+          content: content
+        });
+      } else {
+        this._view.webview.postMessage({
+          type: 'fileContent',
+          path: filePath,
+          error: 'File not found'
+        });
+      }
+    } catch (error) {
+      logger.error(`Failed to read file ${filePath}`, error as Error);
+      this._view.webview.postMessage({
+        type: 'fileContent',
+        path: filePath,
+        error: (error as Error).message
+      });
+    }
   }
 }
 

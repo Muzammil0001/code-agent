@@ -6,19 +6,19 @@ import { Brain, History, Plus } from 'lucide-react';
 type AgentStatus = 'idle' | 'thinking' | 'planning' | 'running' | 'executing';
 
 interface ChatHistoryProps {
-    messages: Array<{ role: 'user' | 'ai'; content: string }>;
+    messages: Array<{ role: 'user' | 'ai'; content: string, commandId?: string }>;
     agentStatus: AgentStatus;
     onEdit: (index: number) => void;
     onHistoryClick?: () => void;
     onNewChat?: () => void;
 }
 
-export const ChatHistory: React.FC<ChatHistoryProps> = ({ messages, agentStatus, onEdit, onHistoryClick, onNewChat }) => {
+export const ChatHistory: React.FC<ChatHistoryProps & { children?: React.ReactNode }> = ({ messages, agentStatus, onEdit, onHistoryClick, onNewChat, children }) => {
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+    }, [messages, children]);
 
     return (
         <div className="flex-1 overflow-y-auto overflow-x-hidden relative">
@@ -65,11 +65,12 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ messages, agentStatus,
 
             <div className="max-w-4xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 space-y-4 sm:space-y-6">
                 {messages.map((msg, index) => (
-                    <Message key={index} role={msg.role} content={msg.content} messageIndex={index} onEdit={onEdit} />
+                    <Message key={index} role={msg.role} content={msg.content} messageIndex={index} onEdit={onEdit} commandId={msg.commandId} />
                 ))}
                 {agentStatus !== 'idle' && (
                     <StatusIndicator status={agentStatus} />
                 )}
+                {children}
                 <div ref={bottomRef} />
             </div>
         </div>

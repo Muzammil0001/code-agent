@@ -35,15 +35,15 @@ export const ChatTextArea: React.FC<ChatTextAreaProps> = ({
 
     return (
         <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            placeholder={placeholder}
-            disabled={disabled}
-            className="w-full bg-transparent ring-none outline-none text-zinc-100 placeholder:text-zinc-500 resize-none min-h-[60px] max-h-[200px] text-[15px] leading-relaxed disabled:opacity-50"
-            rows={1}
-        />
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+        placeholder={placeholder}
+        disabled={disabled}
+        rows={1}
+        className="w-full bg-transparent ring-none outline-none! focus:outline-none text-zinc-100 placeholder:text-zinc-500 resize-none min-h-[60px] max-h-[200px] text-[15px] leading-relaxed disabled:opacity-50"
+    />    
     );
 };

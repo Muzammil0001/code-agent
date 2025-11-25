@@ -4,6 +4,7 @@ export interface Message {
     role: 'user' | 'ai';
     content: string;
     id: string;
+    commandId?: string;
 }
 
 export interface ChatSession {

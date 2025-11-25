@@ -3,22 +3,27 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Pencil } from 'lucide-react';
 import { markdownComponents } from './MarkdownComponents';
+import { useTerminal } from '../hooks/useTerminal';
+import { TerminalOutput } from './TerminalOutput';
 
 interface MessageProps {
     role: 'user' | 'ai';
     content: string;
     messageIndex?: number;
     onEdit?: (index: number) => void;
+    commandId?: string;
 }
 
-export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, onEdit }) => {
-    console.log("===msg-content=====>>", content);
+export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, onEdit, commandId }) => {
+    const { commands, stopCommand } = useTerminal();
     const isUser = role === 'user';
     const handleEdit = () => {
         if (onEdit && messageIndex !== undefined) {
             onEdit(messageIndex);
         }
     };
+
+    const command = commandId ? commands.get(commandId) : undefined;
 
     return (
         <div className={`group flex w-full gap-2 sm:gap-3 md:gap-4 animate-fade-in ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -35,8 +40,8 @@ export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, o
                     )}
                     <div
                         className={`rounded-2xl transition-all duration-200 overflow-hidden ${isUser
-                            ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-600/20 px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4'
-                            : 'bg-zinc-900/80 border border-zinc-800/80 backdrop-blur-sm px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4 hover:border-zinc-700/80'
+                                ? 'bg-gradient-to-br from-purple-600 to-purple-700 text-white shadow-lg shadow-green-500/20 px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4'
+                                : 'bg-zinc-900/80 border border-zinc-800/80 backdrop-blur-sm px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4 hover:border-zinc-700/80'
                             }`}
                     >
                         {isUser ? (
@@ -45,15 +50,18 @@ export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, o
                             </div>
                         ) : (
                             <div className="prose prose-invert prose-sm max-w-none overflow-hidden">
-                                <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={markdownComponents}
-                                >
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                                     {content}
                                 </ReactMarkdown>
+                                {command && (
+                                    <div className="mt-4">
+                                        <TerminalOutput command={command} onStop={stopCommand} />
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
+
                 </div>
             </div>
         </div>
