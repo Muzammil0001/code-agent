@@ -40,12 +40,12 @@ export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, o
                     )}
                     <div
                         className={`rounded-2xl transition-all duration-200 overflow-hidden ${isUser
-                            ? ' bg-[#0e0e0e] text-white shadow-lg shadow-green-500/20 px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4'
+                            ? 'bg-green-600 border border-green-500 text-white shadow-lg shadow-green-500/30 px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4'
                             : 'bg-zinc-900/80 border border-zinc-800/80 backdrop-blur-sm px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4 hover:border-zinc-700/80'
                             }`}
                     >
                         {isUser ? (
-                            <div className="text-[15px] leading-relaxed whitespace-pre-wrap text-white break-words">
+                            <div className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
                                 {content}
                             </div>
                         ) : (
@@ -61,9 +61,9 @@ export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, o
                             </div>
                         )}
                     </div>
-
                 </div>
             </div>
         </div>
+
     );
 };

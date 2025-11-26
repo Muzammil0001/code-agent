@@ -206,7 +206,8 @@ export type AgentType =
     | 'reviewer'
     | 'tester'
     | 'documenter'
-    | 'image-to-code';
+    | 'image-to-code'
+    | 'langchain';
 
 export interface AgentTask {
     id: string;

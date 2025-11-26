@@ -9,6 +9,7 @@ import { projectBrain } from '../brain/ProjectBrain';
 import { fileOperationManager } from '../operations/FileOperationManager';
 import * as vscode from 'vscode';
 import { logger } from '../utils/logger';
+import { PROMPTS } from '../config/prompts';
 
 export class CoderAgent extends BaseAgent {
     constructor() {
@@ -21,7 +22,7 @@ export class CoderAgent extends BaseAgent {
 
         const response = await modelRouter.generateCompletion({
             prompt,
-            systemPrompt: 'You are an expert software engineer. Write clean, well-documented, production-ready code.',
+            systemPrompt: PROMPTS.SYSTEM.CODER,
             context: context.relevantFiles,
             maxTokens: 3000,
             model: task.context.modelId
@@ -93,26 +94,11 @@ export class CoderAgent extends BaseAgent {
     }
 
     private buildCodingPrompt(task: AgentTask, context: any): string {
-        let prompt = `Task: ${task.description}\n\n`;
-
-        if (context.frameworks.length > 0) {
-            prompt += `Project uses: ${context.frameworks.join(', ')}\n\n`;
-        }
-
-        if (task.context.codeSelection) {
-            prompt += `Current code:\n\`\`\`\n${task.context.userPrompt}\n\`\`\`\n\n`;
-        }
-
-        prompt += `Requirements:\n`;
-        prompt += `- Write clean, readable code\n`;
-        prompt += `- Follow best practices\n`;
-        prompt += `- Add appropriate comments\n`;
-        prompt += `- Handle errors properly\n`;
-        prompt += `- Use TypeScript types if applicable\n\n`;
-
-        prompt += `Generate the code:`;
-
-        return prompt;
+        return PROMPTS.CODING_TASK({
+            description: task.description,
+            frameworks: context.frameworks.length > 0 ? context.frameworks.join(', ') : undefined,
+            currentCode: task.context.codeSelection ? task.context.userPrompt : undefined
+        });
     }
 
     private extractFileOperations(response: string): any[] {

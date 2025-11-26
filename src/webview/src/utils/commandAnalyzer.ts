@@ -4,6 +4,7 @@
  */
 
 import type { CommandIntent, ProjectContext } from './commandDetection';
+import { PROMPTS } from '../../../config/prompts';
 
 export interface CommandAnalysisRequest {
     userQuery: string;
@@ -58,52 +59,18 @@ export async function analyzeCommandWithAI(
  * Build specialized prompt for AI command analysis
  */
 export function buildCommandAnalysisPrompt(request: CommandAnalysisRequest): string {
-    const { userQuery, projectContext, availableFiles, platform } = request;
-
-    const projectInfo = `
-Project Type: ${projectContext.type}
-Package Manager: ${projectContext.packageManager}
-Available Scripts: ${Object.keys(projectContext.scripts || {}).join(', ') || 'None'}
-Platform: ${platform}
-`;
-
-    const fileContext = availableFiles.length > 0
-        ? `\nAvailable Files/Directories (sample):\n${availableFiles.slice(0, 20).map(f => `- ${f.path} (${f.type})`).join('\n')}`
+    const fileContext = request.availableFiles.length > 0
+        ? `\nAvailable Files/Directories (sample):\n${request.availableFiles.slice(0, 20).map(f => `- ${f.path} (${f.type})`).join('\n')}`
         : '';
 
-    return `You are a command analysis AI. Analyze the user's query and determine if it's a shell command request.
-
-${projectInfo}${fileContext}
-
-User Query: "${userQuery}"
-
-Analyze this query and respond with a JSON object with the following structure:
-{
-    "isCommand": boolean,  // true if this is a command request, false if it's a chat/question
-    "command": string,     // the actual shell command to execute (if isCommand is true)
-    "type": string,        // one of: "build", "test", "dev", "install", "remove", "cat", "ls", "git", "script", "file-op"
-    "requiresConfirmation": boolean,  // true if this is a dangerous operation
-    "riskLevel": string,   // "safe", "moderate", or "dangerous"
-    "confidence": number,  // 0.0 to 1.0, how confident you are
-    "reasoning": string    // brief explanation of your analysis
-}
-
-Guidelines:
-1. Detect commands from natural language (e.g., "run build" → "npm run build")
-2. Use the project context to generate appropriate commands (e.g., use correct package manager)
-3. For file operations, use platform-appropriate commands (e.g., "cat" on Unix, "type" on Windows)
-4. Mark dangerous operations (delete, rm -rf, etc.) as requiresConfirmation: true
-5. If it's a question or chat message (not a command), set isCommand: false
-6. Be context-aware: "run frontend" in a monorepo should cd to frontend folder
-7. Consider available scripts from package.json
-
-Examples:
-- "run build" → {"isCommand": true, "command": "npm run build", "type": "build", ...}
-- "delete package.json" → {"isCommand": true, "command": "rm package.json", "type": "remove", "requiresConfirmation": true, "riskLevel": "dangerous", ...}
-- "explain how auth works" → {"isCommand": false, ...}
-- "show me main.ts" → {"isCommand": true, "command": "cat main.ts", "type": "cat", ...}
-
-Respond ONLY with the JSON object, no additional text.`;
+    return PROMPTS.COMMAND_ANALYSIS({
+        projectType: request.projectContext.type,
+        packageManager: request.projectContext.packageManager,
+        scripts: Object.keys(request.projectContext.scripts || {}).join(', ') || 'None',
+        platform: request.platform,
+        availableFiles: fileContext,
+        userQuery: request.userQuery
+    });
 }
 
 /**

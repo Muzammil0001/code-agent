@@ -16,6 +16,7 @@ import { inlineSuggestionProvider } from './suggestions/InlineSuggestionProvider
 import { imageToCodeAgent } from './agents/ImageToCodeAgent';
 import { commitMessageGenerator } from './features/CommitMessageGenerator';
 import { WebviewProvider } from './ui/WebviewProvider';
+import { SYSTEM_INSTRUCTION } from './webview/src/constants/query-default-instructions';
 
 let permissionEngine: PermissionEngine;
 
@@ -89,7 +90,6 @@ function registerCommands(context: vscode.ExtensionContext) {
                     await vscode.commands.executeCommand('codemind.panel.focus');
                 } catch (error) {
                     logger.error('Failed to focus panel', error as Error);
-                    // Fallback: try to show the view container
                     await vscode.commands.executeCommand('workbench.view.extension.codemind-sidebar');
                 }
             })
@@ -116,10 +116,11 @@ function registerCommands(context: vscode.ExtensionContext) {
 
                 const response = await modelRouter.generateCompletion({
                     prompt,
-                    systemPrompt: 'You are an expert software engineer. Generate clean, well-documented code.',
+                    systemPrompt: SYSTEM_INSTRUCTION || 'You are an expert code assistant. Generate clean, well-documented and uncommented code.',
                     maxTokens: 2048
                 }, 'code-generation');
-
+                console.log("response====>>", response);
+                logger.info("response====>>", response);
                 // Insert code at cursor
                 const editor = vscode.window.activeTextEditor;
                 if (editor) {

@@ -3,7 +3,7 @@
  * Builds contextual prompts from chat history for better AI responses
  */
 
-import type { Message } from '../contexts/ChatContext';
+import type { Message } from '../stores/chatStore';
 
 export interface MessageContext {
     /** Recent messages for context */

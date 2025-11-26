@@ -178,6 +178,8 @@ export class ModelRouter {
         capability?: ModelCapability
     ): Promise<AIResponse> {
         // Check cache first
+        console.log("request====>>", request);
+        logger.info("request====>>", request);
         const cacheKey = this.getCacheKey(request);
         const cached = responseCache.get(cacheKey);
 
@@ -191,6 +193,8 @@ export class ModelRouter {
         // If specific model requested, validate and use it
         if (request.model) {
             const modelConfig = getModelConfig(request.model);
+            console.log("modelConfig====>>", modelConfig);
+            logger.info("modelConfig====>>", modelConfig);
             if (!modelConfig) {
                 throw new Error(`Invalid model ID: ${request.model}`);
             }
@@ -251,7 +255,8 @@ export class ModelRouter {
         logger.info(`Streaming with model: ${selection.modelId} (${selection.reason})`);
 
         const fullRequest = { ...request, model: selection.modelId };
-
+        console.log("fullRequest====>>", fullRequest);
+        logger.info("fullRequest====>>", fullRequest);
         return await performanceMonitor.measure(
             `ai-stream-${selection.modelId}`,
             async () => {

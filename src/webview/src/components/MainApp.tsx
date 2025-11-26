@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useVSCode } from '../hooks/useVSCode';
-import { useChat } from '../hooks/useChat';
-import { useModel } from '../hooks/useModel';
-import { useNotification } from '../hooks/useNotification';
-import { useTerminal } from '../hooks/useTerminal';
+import { useChatStore } from '../stores/chatStore';
+import { useAgentStore } from '../stores/agentStore';
+import { useModelStore } from '../stores/modelStore';
+import { useNotificationStore } from '../stores/notificationStore';
+import { useTerminalStore } from '../stores/terminalStore';
+import { useFileStore } from '../stores/fileStore';
 import { ChatHistory } from './ChatHistory';
 import { InputArea, type AttachedItem } from './InputArea';
 import { HistoryView } from './HistoryView';
@@ -21,43 +23,65 @@ import {
     TITLE_PREVIEW_LENGTH,
     MESSAGE_PREVIEW_LENGTH,
 } from '../constants/defaults';
-import type { Message } from '../contexts/ChatContext';
+import type { Message } from '../stores/chatStore';
 
 export const MainApp = () => {
     const { postMessage } = useVSCode();
 
-    const {
-        messages,
-        setMessages,
-        chatSessions,
-        setChatSessions,
-        loading,
-        setLoading,
-        agentStatus,
-        setAgentStatus,
-        currentSessionId,
-        setCurrentSessionId,
-        clearMessages
-    } = useChat();
+    // Chat Store
+    const messages = useChatStore(state => state.messages);
+    const addMessage = useChatStore(state => state.addMessage);
+    const setMessages = useChatStore(state => state.setMessages);
+    const sliceMessages = useChatStore(state => state.sliceMessages);
+    const chatSessions = useChatStore(state => state.sessions);
+    const setSessions = useChatStore(state => state.setSessions);
+    const loading = useChatStore(state => state.isLoading);
+    const setLoading = useChatStore(state => state.setLoading);
+    const currentSessionId = useChatStore(state => state.currentSessionId);
+    const setCurrentSessionId = useChatStore(state => state.switchSession); // Map switchSession to setCurrentSessionId
+    const clearMessages = useChatStore(state => state.clearMessages);
 
-    const {
-        selectedModel,
-        setSelectedModel,
-        providerStatus,
-        setAllProviderStatus
-    } = useModel();
+    // Agent Store
+    const agentStatus = useAgentStore(state => state.status);
+    const setAgentStatus = useAgentStore(state => state.setStatus);
 
-    const { showNotification } = useNotification();
-    const { executeCommand, clearAllCommands } = useTerminal();
+    // Model Store
+    const selectedModel = useModelStore(state => state.selectedModel);
+    const setSelectedModel = useModelStore(state => state.setSelectedModel);
+    const providerStatus = useModelStore(state => state.providerStatus);
+    const setAllProviderStatus = useModelStore(state => state.setProviderStatus);
 
-    // Local UI state that doesn't need to be global
-    const [availableFiles, setAvailableFiles] = useState<Array<{ path: string; type: 'file' | 'directory' }>>([]);
+    // Notification Store
+    const showNotification = useNotificationStore(state => state.addNotification);
+
+    // Terminal Store
+    const executeCommand = (command: string) => {
+        // TODO: Integrate with actual terminal execution logic or store
+        // For now, we return a dummy ID as the actual execution happens in WebviewProvider via postMessage
+        // But we can track it in the store
+        useTerminalStore.getState().startCommand(command);
+        return `cmd-${Date.now()}`;
+    };
+    const clearAllCommands = useTerminalStore(state => state.clear);
+
+    // File Store
+    const availableFiles = useFileStore(state => state.files);
+    const setAvailableFiles = useFileStore(state => state.setFiles);
+
+    // Local UI state
     const [isReady, setIsReady] = useState(false);
     const [editingMessage, setEditingMessage] = useState<string>('');
     const [showHistory, setShowHistory] = useState(false);
     const [sessionId, setSessionId] = useState<string>(currentSessionId || GENERATE_SESSION_ID());
     const [projectScripts, setProjectScripts] = useState<ProjectScripts>({});
     const [pendingCommand, setPendingCommand] = useState<CommandIntent | null>(null);
+
+    // Sync sessionId with store
+    useEffect(() => {
+        if (currentSessionId) {
+            setSessionId(currentSessionId);
+        }
+    }, [currentSessionId]);
 
 
     useEffect(() => {
@@ -91,10 +115,7 @@ export const MainApp = () => {
                             ? formatLLMMessage(message.data.response)
                             : `Error: ${message.data.response}`;
 
-                        setMessages(prev => [
-                            ...prev,
-                            { role: 'ai', content: formattedContent, id: Date.now().toString() }
-                        ]);
+                        addMessage({ role: 'ai', content: formattedContent });
                     }
                     break;
 
@@ -103,7 +124,7 @@ export const MainApp = () => {
                     break;
 
                 case 'historyList':
-                    setChatSessions(message.data);
+                    setSessions(message.data);
                     break;
 
                 case 'loadChat':
@@ -182,12 +203,9 @@ export const MainApp = () => {
                 if (commandIntent.requiresConfirmation) {
                     setPendingCommand(commandIntent);
                 } else {
-                    const commandId = executeCommand(commandIntent.command, 'chat');
-                    setMessages(prev => [
-                        ...prev,
-                        { role: 'user', content: text, id: Date.now().toString() },
-                        { role: 'ai', content: `Executing command: \`${commandIntent.command}\``, id: (Date.now() + 1).toString(), commandId }
-                    ]);
+                    const commandId = executeCommand(commandIntent.command);
+                    addMessage({ role: 'user', content: text });
+                    addMessage({ role: 'ai', content: `Executing command: \`${commandIntent.command}\``, commandId });
                 }
                 return;
             }
@@ -200,7 +218,7 @@ export const MainApp = () => {
         const contextualPrompt = buildContextualPrompt(text, messages, projectScripts);
 
         // Add user message
-        setMessages(prev => [...prev, { role: 'user', content: text, id: Date.now().toString() }]);
+        addMessage({ role: 'user', content: text });
         setLoading(true);
         setAgentStatus('thinking');
 
@@ -227,7 +245,7 @@ export const MainApp = () => {
     const handleEdit = (index: number) => {
         const messageToEdit = messages[index];
         if (messageToEdit && messageToEdit.role === 'user') {
-            setMessages(prev => prev.slice(0, index));
+            sliceMessages(index);
             setEditingMessage(messageToEdit.content);
         }
     };
@@ -270,12 +288,9 @@ export const MainApp = () => {
 
     const handleConfirmCommand = () => {
         if (pendingCommand) {
-            const commandId = executeCommand(pendingCommand.command, 'chat');
-            setMessages(prev => [
-                ...prev,
-                { role: 'user', content: pendingCommand.originalMessage, id: Date.now().toString() },
-                { role: 'ai', content: `Executing command: \`${pendingCommand.command}\``, id: (Date.now() + 1).toString(), commandId }
-            ]);
+            const commandId = executeCommand(pendingCommand.command);
+            addMessage({ role: 'user', content: pendingCommand.originalMessage });
+            addMessage({ role: 'ai', content: `Executing command: \`${pendingCommand.command}\``, commandId });
 
             setPendingCommand(null);
         }
@@ -314,7 +329,7 @@ export const MainApp = () => {
             ) : (
                 <>
                     <ChatHistory
-                        messages={messages}
+                        messages={messages.filter(m => m.role !== 'system') as any}
                         agentStatus={agentStatus}
                         onEdit={handleEdit}
                         onHistoryClick={handleHistoryClick}
