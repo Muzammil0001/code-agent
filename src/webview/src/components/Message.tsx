@@ -15,7 +15,7 @@ interface MessageProps {
 }
 
 export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, onEdit, commandId }) => {
-    const { commands, stopCommand } = useTerminal();
+    const { commandsMap, stopCommand } = useTerminal();
     const isUser = role === 'user';
     const handleEdit = () => {
         if (onEdit && messageIndex !== undefined) {
@@ -23,7 +23,7 @@ export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, o
         }
     };
 
-    const command = commandId ? commands.get(commandId) : undefined;
+    const command = commandId ? commandsMap.get(commandId) : undefined;
 
     return (
         <div className={`group flex w-full gap-2 sm:gap-3 md:gap-4 animate-fade-in ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -40,8 +40,8 @@ export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, o
                     )}
                     <div
                         className={`rounded-2xl transition-all duration-200 overflow-hidden ${isUser
-                                ? 'bg-gradient-to-br from-purple-600 to-purple-700 text-white shadow-lg shadow-green-500/20 px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4'
-                                : 'bg-zinc-900/80 border border-zinc-800/80 backdrop-blur-sm px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4 hover:border-zinc-700/80'
+                            ? ' bg-[#0e0e0e] text-white shadow-lg shadow-green-500/20 px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4'
+                            : 'bg-zinc-900/80 border border-zinc-800/80 backdrop-blur-sm px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4 hover:border-zinc-700/80'
                             }`}
                     >
                         {isUser ? (

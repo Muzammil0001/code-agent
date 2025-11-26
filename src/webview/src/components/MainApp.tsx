@@ -9,10 +9,10 @@ import { InputArea, type AttachedItem } from './InputArea';
 import { HistoryView } from './HistoryView';
 import { Notification } from './Notification';
 import { CommandConfirmDialog } from './CommandConfirmDialog';
-import { TerminalOutput } from './TerminalOutput';
 import { Loader2 } from 'lucide-react';
 import { formatLLMMessage } from '../utils/formatLLMMessage';
-import { detectCommandIntent, parsePackageJson, detectProjectContext, type CommandIntent, type ProjectScripts } from '../utils/commandDetection';
+import { parsePackageJson, detectProjectContext, type CommandIntent, type ProjectScripts } from '../utils/commandDetection';
+import { analyzeCommandWithAI, detectPlatform } from '../utils/commandAnalyzer';
 import { buildContextualPrompt } from '../utils/contextBuilder';
 import {
     GENERATE_SESSION_ID,
@@ -48,7 +48,7 @@ export const MainApp = () => {
     } = useModel();
 
     const { showNotification } = useNotification();
-    const { commands, executeCommand, stopCommand } = useTerminal();
+    const { executeCommand, clearAllCommands } = useTerminal();
 
     // Local UI state that doesn't need to be global
     const [availableFiles, setAvailableFiles] = useState<Array<{ path: string; type: 'file' | 'directory' }>>([]);
@@ -164,24 +164,36 @@ export const MainApp = () => {
         }
     }, [messages, sessionId, postMessage]);
 
-    const handleSend = (text: string, files: AttachedItem[]) => {
+
+    const handleSend = async (text: string, files: AttachedItem[]) => {
         const projectContext = detectProjectContext(availableFiles, projectScripts);
-        const commandIntent = detectCommandIntent(text, projectContext);
+        const platform = detectPlatform();
 
-        if (commandIntent) {
-            if (commandIntent.requiresConfirmation) {
-                setPendingCommand(commandIntent);
-            } else {
-                executeCommand(commandIntent.command, 'chat');
+        // Try AI-powered command analysis first
+        try {
+            const commandIntent = await analyzeCommandWithAI({
+                userQuery: text,
+                projectContext,
+                availableFiles,
+                platform
+            });
 
-                // Add command message to chat
-                setMessages(prev => [
-                    ...prev,
-                    { role: 'user', content: text, id: Date.now().toString() },
-                    { role: 'ai', content: `Executing command: \`${commandIntent.command}\``, id: (Date.now() + 1).toString() }
-                ]);
+            if (commandIntent) {
+                if (commandIntent.requiresConfirmation) {
+                    setPendingCommand(commandIntent);
+                } else {
+                    const commandId = executeCommand(commandIntent.command, 'chat');
+                    setMessages(prev => [
+                        ...prev,
+                        { role: 'user', content: text, id: Date.now().toString() },
+                        { role: 'ai', content: `Executing command: \`${commandIntent.command}\``, id: (Date.now() + 1).toString(), commandId }
+                    ]);
+                }
+                return;
             }
-            return;
+        } catch (error) {
+            console.error('AI command analysis failed, falling back to normal chat:', error);
+            // Fall through to normal chat flow
         }
 
         // Build contextual prompt
@@ -248,6 +260,7 @@ export const MainApp = () => {
     const handleDeleteSession = (id: string) => postMessage({ type: 'deleteChat', id });
     const handleNewChat = () => {
         clearMessages();
+        clearAllCommands();
         const newSessionId = GENERATE_SESSION_ID();
         setSessionId(newSessionId);
         setCurrentSessionId(newSessionId);
@@ -257,13 +270,11 @@ export const MainApp = () => {
 
     const handleConfirmCommand = () => {
         if (pendingCommand) {
-            executeCommand(pendingCommand.command, 'chat');
-
-            // Add command message to chat
+            const commandId = executeCommand(pendingCommand.command, 'chat');
             setMessages(prev => [
                 ...prev,
                 { role: 'user', content: pendingCommand.originalMessage, id: Date.now().toString() },
-                { role: 'ai', content: `Executing command: \`${pendingCommand.command}\``, id: (Date.now() + 1).toString() }
+                { role: 'ai', content: `Executing command: \`${pendingCommand.command}\``, id: (Date.now() + 1).toString(), commandId }
             ]);
 
             setPendingCommand(null);
@@ -310,14 +321,6 @@ export const MainApp = () => {
                         onNewChat={handleNewChat}
                     >
                         {/* Render terminal outputs inside chat history */}
-                        {Array.from(commands.values()).map(cmd => (
-                            <div key={cmd.id} className="mb-4">
-                                <TerminalOutput
-                                    command={cmd}
-                                    onStop={stopCommand}
-                                />
-                            </div>
-                        ))}
                     </ChatHistory>
                     <InputArea
                         onSend={handleSend}

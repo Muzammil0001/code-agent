@@ -115,6 +115,9 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
         case 'readFile':
           await this.handleReadFile(message.path);
           break;
+        case 'analyzeCommand':
+          await this.handleAnalyzeCommand(message.data, message.messageId);
+          break;
       }
     });
   }
@@ -764,7 +767,102 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
       });
     }
   }
+
+  /**
+   * Handle AI command analysis request
+   */
+  private async handleAnalyzeCommand(requestData: any, messageId: string): Promise<void> {
+    if (!this._view) return;
+
+    try {
+      const { userQuery, projectContext, availableFiles, platform } = requestData;
+
+      // Build specialized prompt for command analysis
+      const projectInfo = `
+Project Type: ${projectContext.type}
+Package Manager: ${projectContext.packageManager}
+Available Scripts: ${Object.keys(projectContext.scripts || {}).join(', ') || 'None'}
+Platform: ${platform}
+`;
+
+      const fileContext = availableFiles && availableFiles.length > 0
+        ? `\nAvailable Files/Directories (sample):\n${availableFiles.slice(0, 20).map((f: any) => `- ${f.path} (${f.type})`).join('\n')}`
+        : '';
+
+      const prompt = `You are a command analysis AI. Analyze the user's query and determine if it's a shell command request.
+
+${projectInfo}${fileContext}
+
+User Query: "${userQuery}"
+
+Analyze this query and respond with a JSON object with the following structure:
+{
+    "isCommand": boolean,  // true if this is a command request, false if it's a chat/question
+    "command": string,     // the actual shell command to execute (if isCommand is true)
+    "type": string,        // one of: "build", "test", "dev", "install", "remove", "cat", "ls", "git", "script", "file-op"
+    "requiresConfirmation": boolean,  // true if this is a dangerous operation
+    "riskLevel": string,   // "safe", "moderate", or "dangerous"
+    "confidence": number,  // 0.0 to 1.0, how confident you are
+    "reasoning": string    // brief explanation of your analysis
 }
+
+Guidelines:
+1. Detect commands from natural language (e.g., "run build" → "npm run build")
+2. Use the project context to generate appropriate commands (e.g., use correct package manager)
+3. For file operations, use platform-appropriate commands (e.g., "cat" on Unix, "type" on Windows)
+4. Mark dangerous operations (delete, rm -rf, etc.) as requiresConfirmation: true
+5. If it's a question or chat message (not a command), set isCommand: false
+6. Be context-aware: "run frontend" in a monorepo should cd to frontend folder
+7. Consider available scripts from package.json
+
+Examples:
+- "run build" → {"isCommand": true, "command": "npm run build", "type": "build", ...}
+- "delete package.json" → {"isCommand": true, "command": "rm package.json", "type": "remove", "requiresConfirmation": true, "riskLevel": "dangerous", ...}
+- "explain how auth works" → {"isCommand": false, ...}
+- "show me main.ts" → {"isCommand": true, "command": "cat main.ts", "type": "cat", ...}
+
+Respond ONLY with the JSON object, no additional text.`;
+
+      // Use ModelRouter to analyze with AI
+      const aiResponse = await modelRouter.generateCompletion({
+        prompt,
+        temperature: 0.3, // Lower temperature for more consistent command detection
+        maxTokens: 500
+      });
+
+      // Parse AI response
+      let analysisResult: any = { isCommand: false };
+      try {
+        const jsonMatch = aiResponse.content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          analysisResult = JSON.parse(jsonMatch[0]);
+        }
+      } catch (parseError) {
+        logger.error('Failed to parse AI command analysis response', parseError as Error);
+      }
+
+      // Send response back to webview
+      this._view.webview.postMessage({
+        type: 'commandAnalysisResponse',
+        messageId,
+        data: analysisResult
+      });
+
+    } catch (error) {
+      logger.error('AI command analysis failed', error as Error);
+
+      // Send error response
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: 'commandAnalysisResponse',
+          messageId,
+          data: { isCommand: false, error: (error as Error).message }
+        });
+      }
+    }
+  }
+}
+
 
 function getNonce() {
   let text = '';

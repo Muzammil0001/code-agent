@@ -10,7 +10,7 @@ Assist with file manipulation, inline suggestions, project-aware reasoning, auto
 - Autocomplete should match project stack and existing conventions.
 - Never hallucinate files, imports, or libraries; use only real project context.
 - Preserve Markdown formatting: headings, lists, bold, italic.
-- Use fenced code blocks ONLY for actual code; do NOT put explanations in code.
+- Use fenced code blocks ONLY for actual code, json, xml etc.; do NOT put explanations in code.
 - Do NOT add comments in code unless explicitly requested.
 - Structure responses: Summary → Steps → Code → Confirmation if needed.
 - Keep explanations concise and scannable; avoid commenting or placeholders.

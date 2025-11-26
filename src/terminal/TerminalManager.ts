@@ -157,8 +157,34 @@ export class TerminalManager {
             this.addOutput(commandId, output, 'stderr');
         });
 
+        logger.info(`Starting background process for command ${commandId}: ${command} in ${cwd}`);
+
+        // Set up a fail-safe timeout (e.g., 5 minutes = 300000 ms)
+        const FAILSAFE_TIMEOUT_MS = 300000;
+        let isCompleted = false;
+        const timeout = setTimeout(() => {
+            if (!isCompleted) {
+                logger.error(`Fail-safe timeout reached for command ${commandId}`);
+                try {
+                    childProcess.kill('SIGKILL');
+                } catch (e) {
+                    logger.error(`Failed to kill process for command ${commandId}:`, e);
+                }
+                terminalCommand.status = CommandStatus.FAILED;
+                terminalCommand.endTime = Date.now();
+                this.addOutput(commandId, `Error: Command timed out after ${FAILSAFE_TIMEOUT_MS / 1000}s`, 'stderr');
+                this.notifyComplete(commandId, 1, FAILSAFE_TIMEOUT_MS, CommandStatus.FAILED);
+                this.processes.delete(commandId);
+                isCompleted = true;
+            }
+        }, FAILSAFE_TIMEOUT_MS);
+
         // Handle process exit
         childProcess.on('exit', (code, signal) => {
+            if (isCompleted) return;
+            isCompleted = true;
+            clearTimeout(timeout);
+            logger.info(`Process exit event for command ${commandId}: code=${code}, signal=${signal}`);
             const exitCode = code ?? (signal ? 1 : 0);
             const duration = Date.now() - terminalCommand.startTime;
 
@@ -182,13 +208,15 @@ export class TerminalManager {
 
         // Handle errors
         childProcess.on('error', (error) => {
-            logger.error(`Command ${commandId} error`, error);
+            if (isCompleted) return;
+            isCompleted = true;
+            clearTimeout(timeout);
+            logger.error(`Process error event for command ${commandId}:`, error);
             terminalCommand.status = CommandStatus.FAILED;
             terminalCommand.endTime = Date.now();
 
             this.addOutput(commandId, `Error: ${error.message}`, 'stderr');
             this.notifyComplete(commandId, 1, Date.now() - terminalCommand.startTime, CommandStatus.FAILED);
-
             this.processes.delete(commandId);
         });
     }
