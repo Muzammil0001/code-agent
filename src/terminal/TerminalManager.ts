@@ -329,6 +329,13 @@ export class TerminalManager {
     }
 
     /**
+     * Get process by command ID (for terminal relocation)
+     */
+    getProcess(commandId: string): ChildProcess | undefined {
+        return this.processes.get(commandId);
+    }
+
+    /**
      * Clear completed commands
      */
     clearCompleted(): void {

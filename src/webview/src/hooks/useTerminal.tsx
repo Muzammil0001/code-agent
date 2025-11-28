@@ -27,7 +27,7 @@ export interface TerminalCommand {
 
 export interface UseTerminalReturn {
     commands: Map<string, TerminalCommand>;
-    executeCommand: (command: string, location?: 'chat' | 'main', cwd?: string) => void;
+    executeCommand: (command: string, location?: 'chat' | 'main', cwd?: string) => string;
     stopCommand: (commandId: string) => void;
     getRunningCommands: () => void;
     clearCompletedCommands: () => void;
@@ -35,7 +35,11 @@ export interface UseTerminalReturn {
 
 export function useTerminal(): UseTerminalReturn {
     const { postMessage } = useVSCode();
-    const [commands, setCommands] = useState<Map<string, TerminalCommand>>(new Map());
+    const commands = useTerminalStore(state => state.commands);
+    const addCommand = useTerminalStore(state => state.addCommand);
+    const updateCommand = useTerminalStore(state => state.updateCommand);
+    const addOutput = useTerminalStore(state => state.addOutput);
+    const clearCompleted = useTerminalStore(state => state.clearCompleted);
 
     /**
      * Handle messages from extension
@@ -47,95 +51,57 @@ export function useTerminal(): UseTerminalReturn {
             switch (message.type) {
                 case 'terminalCommandStarted':
                     if (message.success && message.commandId) {
-                        // Command started - initial state will be set by terminalStatus
+                        // Command started
                     } else if (!message.success) {
                         console.error('Failed to start terminal command:', message.error);
+                        updateCommand(message.commandId, { status: 'failed' });
                     }
                     break;
 
                 case 'terminalOutput':
-                    setCommands(prev => {
-                        const newCommands = new Map(prev);
-                        const cmd = newCommands.get(message.commandId);
-
-                        if (cmd) {
-                            cmd.output = [...cmd.output, message.output];
-                            newCommands.set(message.commandId, { ...cmd });
-                        }
-
-                        return newCommands;
-                    });
+                    addOutput(message.commandId, message.output);
                     break;
 
                 case 'terminalStatus':
-                    setCommands(prev => {
-                        const newCommands = new Map(prev);
-                        let cmd = newCommands.get(message.commandId);
-
-                        if (!cmd) {
-                            // Create new command entry
-                            cmd = {
-                                id: message.commandId,
-                                command: '', // Will be updated
-                                cwd: '',
-                                status: message.status,
-                                startTime: Date.now(),
-                                output: [],
-                                location: 'chat',
-                                pid: message.pid
-                            };
-                        } else {
-                            cmd.status = message.status;
-                            cmd.pid = message.pid;
-                        }
-
-                        newCommands.set(message.commandId, { ...cmd });
-                        return newCommands;
-                    });
+                    // Check if command exists
+                    if (!commands.has(message.commandId)) {
+                        addCommand({
+                            id: message.commandId,
+                            command: '', // Will be updated
+                            cwd: '',
+                            status: message.status,
+                            startTime: Date.now(),
+                            output: [],
+                            location: 'chat',
+                            pid: message.pid
+                        });
+                    } else {
+                        updateCommand(message.commandId, {
+                            status: message.status,
+                            pid: message.pid
+                        });
+                    }
                     break;
 
                 case 'terminalComplete':
-                    setCommands(prev => {
-                        const newCommands = new Map(prev);
-                        const cmd = newCommands.get(message.commandId);
-
-                        if (cmd) {
-                            cmd.status = message.status;
-                            cmd.exitCode = message.exitCode;
-                            cmd.endTime = Date.now();
-                            newCommands.set(message.commandId, { ...cmd });
-                        }
-
-                        return newCommands;
+                    updateCommand(message.commandId, {
+                        status: message.status,
+                        exitCode: message.exitCode,
+                        endTime: Date.now()
                     });
                     break;
 
                 case 'terminalCommandStopped':
-                    setCommands(prev => {
-                        const newCommands = new Map(prev);
-                        const cmd = newCommands.get(message.commandId);
-
-                        if (cmd) {
-                            cmd.status = 'stopped';
-                            cmd.endTime = Date.now();
-                            newCommands.set(message.commandId, { ...cmd });
-                        }
-
-                        return newCommands;
+                    updateCommand(message.commandId, {
+                        status: 'stopped',
+                        endTime: Date.now()
                     });
                     break;
 
                 case 'runningCommands':
-                    // Update with running commands from backend
                     if (message.commands && Array.isArray(message.commands)) {
-                        setCommands(prev => {
-                            const newCommands = new Map(prev);
-
-                            message.commands.forEach((cmd: TerminalCommand) => {
-                                newCommands.set(cmd.id, cmd);
-                            });
-
-                            return newCommands;
+                        message.commands.forEach((cmd: TerminalCommand) => {
+                            addCommand(cmd);
                         });
                     }
                     break;
@@ -144,7 +110,7 @@ export function useTerminal(): UseTerminalReturn {
 
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, []);
+    }, [addCommand, updateCommand, addOutput, commands]);
 
     /**
      * Execute a terminal command
@@ -155,9 +121,9 @@ export function useTerminal(): UseTerminalReturn {
         cwd?: string
     ) => {
         // Create optimistic command entry
-        const tempId = `temp_${Date.now()}`;
+        const commandId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const tempCommand: TerminalCommand = {
-            id: tempId,
+            id: commandId,
             command,
             cwd: cwd || '',
             status: 'pending',
@@ -166,20 +132,19 @@ export function useTerminal(): UseTerminalReturn {
             location
         };
 
-        setCommands(prev => {
-            const newCommands = new Map(prev);
-            newCommands.set(tempId, tempCommand);
-            return newCommands;
-        });
+        addCommand(tempCommand);
 
         // Send to extension
         postMessage({
             type: 'executeTerminalCommand',
             command,
             cwd,
-            location
+            location,
+            commandId
         });
-    }, [postMessage]);
+
+        return commandId;
+    }, [postMessage, addCommand]);
 
     /**
      * Stop a running command
@@ -200,28 +165,11 @@ export function useTerminal(): UseTerminalReturn {
         });
     }, [postMessage]);
 
-    /**
-     * Clear completed/failed/stopped commands
-     */
-    const clearCompletedCommands = useCallback(() => {
-        setCommands(prev => {
-            const newCommands = new Map(prev);
-
-            for (const [id, cmd] of newCommands.entries()) {
-                if (cmd.status === 'completed' || cmd.status === 'failed' || cmd.status === 'stopped') {
-                    newCommands.delete(id);
-                }
-            }
-
-            return newCommands;
-        });
-    }, []);
-
     return {
         commands,
         executeCommand,
         stopCommand,
         getRunningCommands,
-        clearCompletedCommands
+        clearCompletedCommands: clearCompleted
     };
 }

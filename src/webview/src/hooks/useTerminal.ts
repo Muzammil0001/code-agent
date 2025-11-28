@@ -2,32 +2,17 @@
  * Terminal hook for managing terminal commands and output
  */
 
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useVSCode } from './useVSCode';
+import { useTerminalStore, type TerminalCommand, type TerminalOutputLine } from '../stores/terminalStore';
 
 export type TerminalStatus = 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
 
-export interface TerminalOutputLine {
-    content: string;
-    type: 'stdout' | 'stderr';
-    timestamp: number;
-}
-
-export interface TerminalCommand {
-    id: string;
-    command: string;
-    cwd?: string;
-    status: TerminalStatus;
-    output: TerminalOutputLine[];
-    startTime: number;
-    endTime?: number;
-    exitCode?: number;
-    requiresConfirmation?: boolean;
-}
+export type { TerminalCommand, TerminalOutputLine };
 
 export interface UseTerminalReturn {
     commands: TerminalCommand[];
-    commandsMap: Map<string, TerminalCommand>;
+    commandsMap: Record<string, TerminalCommand>;
     executeCommand: (command: string, cwd?: string) => string;
     stopCommand: (commandId: string) => void;
     updateCommandStatus: (commandId: string, updates: Partial<TerminalCommand>) => void;
@@ -38,7 +23,13 @@ export interface UseTerminalReturn {
 
 export function useTerminal(): UseTerminalReturn {
     const { postMessage } = useVSCode();
-    const [commands, setCommands] = useState<Map<string, TerminalCommand>>(new Map());
+
+    // Use Zustand store instead of local state
+    const commands = useTerminalStore(state => state.commands);
+    const addCommand = useTerminalStore(state => state.addCommand);
+    const updateCommand = useTerminalStore(state => state.updateCommand);
+    const addOutput = useTerminalStore(state => state.addOutput);
+    const clearCompleted = useTerminalStore(state => state.clearCompleted);
 
     const executeCommand = useCallback((command: string, cwd?: string) => {
         const commandId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -46,14 +37,17 @@ export function useTerminal(): UseTerminalReturn {
         const newCommand: TerminalCommand = {
             id: commandId,
             command,
-            cwd,
+            cwd: cwd || '/workspace',
             status: 'pending',
             output: [],
-            startTime: Date.now()
+            startTime: Date.now(),
+            location: 'chat'
         };
 
-        setCommands(prev => new Map(prev.set(commandId, newCommand)));
+        // Add to store
+        addCommand(newCommand);
 
+        // Send to backend
         postMessage({
             type: 'runCommand',
             command,
@@ -62,7 +56,7 @@ export function useTerminal(): UseTerminalReturn {
         });
 
         return commandId;
-    }, [postMessage]);
+    }, [postMessage, addCommand]);
 
     const stopCommand = useCallback((commandId: string) => {
         postMessage({
@@ -75,53 +69,32 @@ export function useTerminal(): UseTerminalReturn {
         commandId: string,
         updates: Partial<TerminalCommand>
     ) => {
-        setCommands(prev => {
-            const command = prev.get(commandId);
-            if (!command) return prev;
-
-            const updated = { ...command, ...updates };
-            return new Map(prev.set(commandId, updated));
-        });
-    }, []);
+        updateCommand(commandId, updates);
+    }, [updateCommand]);
 
     const appendOutput = useCallback((
         commandId: string,
         content: string,
         type: 'stdout' | 'stderr' = 'stdout'
     ) => {
-        setCommands(prev => {
-            const command = prev.get(commandId);
-            if (!command) return prev;
-
-            const newLine: TerminalOutputLine = {
-                content,
-                type,
-                timestamp: Date.now()
-            };
-
-            const updated = {
-                ...command,
-                output: [...command.output, newLine]
-            };
-
-            return new Map(prev.set(commandId, updated));
-        });
-    }, []);
+        const newLine: TerminalOutputLine = {
+            content,
+            type,
+            timestamp: Date.now()
+        };
+        addOutput(commandId, newLine);
+    }, [addOutput]);
 
     const clearCommand = useCallback((commandId: string) => {
-        setCommands(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(commandId);
-            return newMap;
-        });
-    }, []);
+        updateCommand(commandId, { status: 'stopped' });
+    }, [updateCommand]);
 
     const clearAllCommands = useCallback(() => {
-        setCommands(new Map());
-    }, []);
+        clearCompleted();
+    }, [clearCompleted]);
 
     return {
-        commands: Array.from(commands.values()),
+        commands: Object.values(commands),
         commandsMap: commands,
         executeCommand,
         stopCommand,
@@ -131,3 +104,4 @@ export function useTerminal(): UseTerminalReturn {
         clearAllCommands
     };
 }
+

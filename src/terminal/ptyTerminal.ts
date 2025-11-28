@@ -7,7 +7,7 @@ export class PTYTerminal implements vscode.Pseudoterminal {
   private process: ReturnType<typeof spawn> | null = null;
   private isRunning: boolean = false;
 
-  constructor(private command: string, private cwd: string = process.cwd()) {}
+  constructor(private command: string, private cwd: string = process.cwd()) { }
 
   open() {
     this.isRunning = true;
