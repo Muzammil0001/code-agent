@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Pencil } from 'lucide-react';
 import { markdownComponents } from './MarkdownComponents';
 import { useTerminal } from '../hooks/useTerminal';
 import { TerminalOutput } from './TerminalOutput';
-
+import { useVSCode } from '../hooks/useVSCode';
 interface MessageProps {
     role: 'user' | 'ai';
     content: string;
@@ -15,15 +15,23 @@ interface MessageProps {
 }
 
 export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, onEdit, commandId }) => {
-    const { commandsMap, stopCommand } = useTerminal();
+    const { stopCommand } = useTerminal();
+    const { postMessage } = useVSCode();
     const isUser = role === 'user';
+
     const handleEdit = () => {
         if (onEdit && messageIndex !== undefined) {
             onEdit(messageIndex);
         }
     };
 
-    const command = commandId ? commandsMap.get(commandId) : undefined;
+    const handleRelocate = useCallback((id: string) => {
+        postMessage({
+            type: 'terminalRelocate',
+            commandId: id
+        });
+    }, [postMessage]);
+
 
     return (
         <div className={`group flex w-full gap-2 sm:gap-3 md:gap-4 animate-fade-in ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -38,9 +46,10 @@ export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, o
                             <Pencil size={12} className="text-zinc-300 sm:w-3.5 sm:h-3.5" />
                         </button>
                     )}
+
                     <div
                         className={`rounded-2xl transition-all duration-200 overflow-hidden ${isUser
-                            ? 'bg-green-600 border border-green-500 text-white shadow-lg shadow-green-500/30 px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4'
+                            ? 'bg-zinc-800/80 border border-zinc-800 text-white shadow-lg shadow-zinc-800/30 px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4'
                             : 'bg-zinc-900/80 border border-zinc-800/80 backdrop-blur-sm px-3 py-3 sm:px-4 sm:py-3.5 md:px-5 md:py-4 hover:border-zinc-700/80'
                             }`}
                     >
@@ -53,9 +62,9 @@ export const Message: React.FC<MessageProps> = ({ role, content, messageIndex, o
                                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                                     {content}
                                 </ReactMarkdown>
-                                {command && (
+                                {commandId && (
                                     <div className="mt-4">
-                                        <TerminalOutput command={command} onStop={stopCommand} />
+                                        <TerminalOutput commandId={commandId} onStop={stopCommand} onRelocate={handleRelocate} />
                                     </div>
                                 )}
                             </div>
